@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>İngilizce Bilgi Kartları</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+        }
+		.scene {
+            width: 100%;
+            max-width: 500px;
+            height: 520px; /* Varsayılan başlangıç yüksekliği */
+            perspective: 1000px;
+            /* Yükseklik değişimini yumuşak hale getiren animasyon */
+            transition: height 0.4s ease-in-out;
+        }
+        .card {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            cursor: pointer;
+            transform-style: preserve-3d;
+            transition: transform 0.8s;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            border-radius: 1.5rem;
+        }
+        .card.is-flipped {
+            transform: rotateY(180deg);
+        }
+        .card__face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            border-radius: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+        .card__face--front {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-family: 'Nunito', sans-serif;
+        }
+        .card__face--back {
+            background-color: #ffffff;
+            color: #334155;
+            transform: rotateY(180deg);
+            font-size: 0.9rem;
+            justify-content: center;
+            align-items: flex-start;
+            text-align: left;
+            cursor: default;
+        }
+        .action-button {
+            transition: all 0.2s ease-in-out;
+        }
+        .action-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        .action-button:active {
+            transform: translateY(0);
+        }
+        .action-button:disabled {
+            background-color: #e2e8f0;
+            color: #94a3b8;
+            cursor: not-allowed;
+        }
+        .toast {
+            transition: all 0.4s ease-in-out;
+            opacity: 0;
+            transform: translateY(-150%);
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 space-y-3 z-50 w-full max-w-xs sm:max-w-sm md:max-w-md"></div>
+
+    <div id="deck-selection-view" class="w-full max-w-2xl">
+        <h1 class="text-3xl sm:text-4xl text-center font-bold text-slate-800 mb-6" style="font-family: 'Nunito', sans-serif;">Çalışma Setlerim</h1>
+        <div id="deck-list" class="space-y-4">
+            </div>
+        <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button id="import-deck-btn" class="action-button w-full bg-white text-indigo-600 font-semibold py-3 rounded-lg shadow-md border border-indigo-200 hover:bg-indigo-50">
+                Set İçe Aktar (.txt)
+            </button>
+            <button id="add-new-deck-btn" class="action-button w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg shadow-md">
+                Yeni Set Oluştur
+            </button>
+            <input type="file" id="import-file-input" class="hidden" accept=".txt">
+        </div>
+    </div>
+
+    <div id="learning-view" class="hidden w-full max-w-2xl flex flex-col items-center">
+        <h1 id="learning-deck-title" class="text-3xl sm:text-4xl text-center font-bold text-slate-800 mb-2" style="font-family: 'Nunito', sans-serif;"></h1>
+        <button id="back-to-decks-btn" class="mb-4 text-indigo-600 hover:text-indigo-800 font-semibold">← Setlere Geri Dön</button>
+        
+        <div id="progress-container" class="w-full max-w-md mb-4 text-center">
+             <div class="flex justify-start items-center">
+                 <p class="text-lg font-semibold text-slate-700">Öğrenilen: <span id="mastered-count">0</span> / <span id="total-count">0</span></p>
+             </div>
+             <div class="w-full bg-slate-200 rounded-full h-2.5 mt-2">
+                 <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div>
+             </div>
+        </div>
+
+        <div class="scene mb-8">
+            <div id="card" class="card">
+                <div id="card-front" class="card__face card__face--front"></div>
+                <div id="card-back" class="card__face card__face--back"></div>
+            </div>
+        </div>
+        
+        <div id="completion-screen" class="hidden text-center p-8 bg-white rounded-2xl shadow-xl">
+            <h2 class="text-3xl font-bold text-green-600 mb-4">Harika İş! 🎉</h2>
+            <p class="text-slate-700 text-lg mb-6">Bu setteki tüm kelimeleri öğrendin.</p>
+            <button id="restart-btn" class="action-button bg-indigo-600 text-white font-semibold py-3 px-8 rounded-full shadow-lg">
+                Seti Tekrar Çalış
+            </button>
+        </div>
+    </div>
+
+	<div id="deck-editor-view" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b">
+                <h2 id="editor-title" class="text-2xl font-bold text-slate-800">Seti Düzenle</h2>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-6">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div class="flex-grow w-full">
+                        <label for="deck-name-input" class="block text-sm font-medium text-slate-700 mb-1">Set Adı</label>
+                        <input type="text" id="deck-name-input" class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div class="ml-0 sm:ml-6 flex items-center space-x-2 p-2 rounded-md self-end sm:self-center mt-2.5">
+                        <label for="deck-test-mode-toggle" class="text-sm font-medium text-slate-600 cursor-pointer">Bilgini Test Et</label>
+                        <button id="deck-test-mode-toggle" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none">
+                            <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+                        </button>
+                    </div>
+                </div>
+                <div id="card-editor-list" class="space-y-4">
+                    </div>
+                <button id="add-new-card-btn" class="action-button w-full bg-slate-200 text-slate-700 font-semibold py-2 rounded-lg">
+                    + Kart Ekle
+                </button>
+            </div>
+            <div class="p-6 border-t flex flex-col sm:flex-row justify-between items-center gap-4">
+                 <div class="flex items-center gap-2">
+                    <button id="reset-progress-btn" class="action-button bg-amber-100 text-amber-700 font-semibold py-2 px-4 rounded-lg border border-amber-200 hidden">İlerlemeyi Sıfırla</button>
+                    <button id="export-deck-btn-editor" class="action-button bg-slate-100 text-slate-700 font-semibold py-2 px-4 rounded-lg border border-slate-200 hidden">Seti Dışa Aktar</button>
+                 </div>
+                 <div class="flex space-x-4">
+                     <button id="cancel-deck-edit-btn" class="action-button bg-white text-slate-700 font-semibold py-2 px-6 rounded-lg border border-slate-300">İptal</button>
+                     <button id="save-deck-btn" class="action-button bg-green-500 text-white font-semibold py-2 px-6 rounded-lg">Kaydet</button>
+                 </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const initialDecks = [
+            {
+                id: 1,
+                name: "İngilizce Bağlaçlar ve Edatlar",
+                testMode: true,
+                cards: [
+                    { id: 1, english: "and", turkish: "ve", usage: "Cümleleri veya öğeleri birbirine bağlar.", example: "I bought apples and oranges.", translation: "Elma ve portakal aldım." },
+                    { id: 2, english: "or", turkish: "veya, ya da", usage: "Seçim veya alternatif sunar.", example: "Do you want tea or coffee?", translation: "Çay mı yoksa kahve mi istersin?" },
+                    { id: 3, english: "but", turkish: "ama, fakat", usage: "Zıtlık belirtir.", example: "I wanted to go, but it rained.", translation: "Gitmek istedim ama yağmur yağdı." },
+                    { id: 4, english: "nor", turkish: "ne de", usage: "Olumsuz bir bağlaç olup, bir önceki olumsuz ifadeye ekleme yapar.", example: "He didn’t call, nor did he text.", translation: "Aramadı, mesaj da atmadı." },
+                    { id: 5, english: "yet", turkish: "ama, yine de", usage: "Bir önceki ifadeye göre hafif bir zıtlık veya beklenmedik bir durum belirtir.", example: "It was late, yet he continued working.", translation: "Geç olmasına rağmen çalışmaya devam etti." },
+                    { id: 6, english: "so", turkish: "bu yüzden, bu nedenle", usage: "Bir önceki durumun sonucunu ifade eder.", example: "It was cold, so I wore a coat.", translation: "Hava soğuktu, bu yüzden mont giydim." },
+                    { id: 7, english: "because", turkish: "çünkü, -dığı için", usage: "Bir eylemin sebebini açıklar.", example: "I stayed home because it was raining.", translation: "Yağmur yağdığı için evde kaldım." },
+                    { id: 8, english: "since", turkish: "-dığı için", usage: "Bir durumun mantıksal sonucunu veya sebebini belirtir.", example: "Since he was tired, he went to bed early.", translation: "Yorgun olduğu için erken yattı." },
+                    { id: 9, english: "as", turkish: "-dığı için, -den dolayı", usage: "'Because' ile benzer şekilde sebep-sonuç ilişkisi kurar.", example: "As it was late, we decided to leave.", translation: "Geç olduğu için ayrılmaya karar verdik." },
+                    { id: 10, english: "therefore", turkish: "bu nedenle, bu yüzden", usage: "Öncesinde belirtilen bir durumun sonucunu vurgular.", example: "She studied hard; therefore, she passed.", translation: "Çok çalıştı; bu nedenle geçti." },
+                    { id: 11, english: "thus", turkish: "böylece", usage: "Bir eylemin veya durumun sonucunu ifade eder ve genellikle resmi bir dilde kullanılır.", example: "He didn’t study, thus he failed.", translation: "Çalışmadı, böylece kaldı." },
+                    { id: 12, english: "so that", turkish: "-sın diye, -mek için", usage: "Bir eylemin amacını veya hedefini belirtir.", example: "I spoke slowly so that everyone could understand.", translation: "Herkes anlayabilsin diye yavaş konuştum." },
+                    { id: 13, english: "although / though / even though", turkish: "-e rağmen", usage: "Ana fikirle zıt olan bir durumu ifade eder.", example: "Although it rained, we went out.", translation: "Yağmur yağmasına rağmen dışarı çıktık." },
+                    { id: 14, english: "whereas / while", turkish: "oysa, halbuki", usage: "İki farklı şey arasındaki zıtlığı veya karşılaştırmayı belirtir.", example: "He likes tea, whereas I prefer coffee.", translation: "O çayı sever, oysa ben kahveyi tercih ederim." },
+                    { id: 15, english: "however", turkish: "ancak, yine de", usage: "Bir önceki cümleye zıt bir fikir sunar.", example: "I wanted to join; however, I was busy.", translation: "Katılmak istedim; ancak meşguldüm." },
+                    { id: 16, english: "nevertheless / nonetheless", turkish: "yine de, buna rağmen", usage: "Öncesinde belirtilen duruma rağmen beklenmeyen bir durumu ifade eder.", example: "It was raining; nevertheless, they played football.", translation: "Yağmur yağıyordu; yine de futbol oynadılar." },
+                    { id: 17, english: "if", turkish: "eğer, -se", usage: "Bir koşula bağlı olarak gerçekleşecek bir durumu belirtir.", example: "If it rains, we will stay home.", translation: "Eğer yağmur yağarsa, evde kalacağız." },
+                    { id: 18, english: "unless", turkish: "-medikçe, -mezse", usage: "Olumsuz bir koşulu ifade eder. 'Eğer ... değilse' anlamına gelir.", example: "I won’t go unless you come.", translation: "Sen gelmedikçe gitmeyeceğim." },
+                    { id: 19, english: "provided that / providing that", turkish: "şartıyla", usage: "Bir koşulun yerine getirilmesi halinde bir eylemin gerçekleşeceğini belirtir.", example: "You can borrow it provided that you return it.", translation: "Geri getirmen şartıyla ödünç alabilirsin." },
+                    { id: 20, english: "as long as", turkish: "sürece", usage: "Bir eylemin belirli bir süre veya koşul boyunca devam edeceğini ifade eder.", example: "You can stay here as long as you are quiet.", translation: "Sessiz olduğun sürece burada kalabilirsin." },
+                    { id: 21, english: "when", turkish: "-dığında, -iken", usage: "Bir eylemin ne zaman gerçekleştiğini belirtir.", example: "Call me when you arrive.", translation: "Vardığında beni ara." },
+                    { id: 22, english: "while", turkish: "-iken", usage: "İki eylemin aynı anda gerçekleştiğini belirtir.", example: "I read while he cooked.", translation: "O yemek yaparken ben okudum." },
+                    { id: 23, english: "before", turkish: "-den önce", usage: "Bir eylemin diğerinden önce gerçekleştiğini belirtir.", example: "Wash your hands before eating.", translation: "Yemekten önce ellerini yıka." },
+                    { id: 24, english: "after", turkish: "-den sonra", usage: "Bir eylemin diğerinden sonra gerçekleştiğini belirtir.", example: "We left after the movie ended.", translation: "Film bittikten sonra ayrıldık." },
+                    { id: 25, english: "until / till", turkish: "-e kadar", usage: "Bir eylemin ne zamana kadar devam edeceğini belirtir.", example: "Wait here until I return.", translation: "Dönene kadar burada bekle." },
+                    { id: 26, english: "as soon as", turkish: "-er ... -mez, olur olmaz", usage: "Bir eylemin, diğer eylem biter bitmez gerçekleşeceğini ifade eder.", example: "I called her as soon as I arrived.", translation: "Vardığım olur olmaz onu aradım." },
+                    { id: 27, english: "in spite of / despite", turkish: "-e rağmen", usage: "Bir zıtlığı veya beklenmeyen bir durumu vurgular.", example: "In spite of the rain, we went out.", translation: "Yağmura rağmen dışarı çıktık." },
+                    { id: 28, english: "because of / due to", turkish: "-den dolayı, yüzünden", usage: "Bir durumun sebebini açıklar.", example: "The flight was canceled because of fog.", translation: "Sis yüzünden uçuş iptal edildi." },
+                    { id: 29, english: "in order to / so as to", turkish: "-mek için, amacıyla", usage: "Bir eylemin amacını veya hedefini belirtir.", example: "He studies hard in order to pass the exam.", translation: "Sınavı geçmek için çok çalışıyor." },
+                    { id: 30, english: "according to", turkish: "-e göre", usage: "Bir bilginin kaynağını veya referansını belirtir.", example: "According to the report, sales increased.", translation: "Raporlara göre satışlar arttı." },
+                    { id: 31, english: "as for / regarding", turkish: "... hakkında, -e gelince", usage: "Konu değiştirmek veya yeni bir konuya geçmek için kullanılır.", example: "As for the meeting, it is postponed.", translation: "Toplantıya gelince, ertelendi." },
+                    { id: 32, english: "besides", turkish: "ayrıca", usage: "Bir fikre ek olarak yeni bir bilgi ekler.", example: "I don’t want to go; besides, it’s late.", translation: "Gitmek istemiyorum; ayrıca, zaten geç oldu." },
+                    { id: 33, english: "what’s more", turkish: "dahası, üstelik", usage: "Daha önce bahsedilen bir fikri vurgulamak için kullanılır.", example: "She is smart; what’s more, she is funny.", translation: "Zeki; dahası, komik biri." },
+                    { id: 34, english: "plus", turkish: "hem de, ayrıca", usage: "Gayriresmi bir dilde, bir şeye ek bir özellik veya fayda ekler.", example: "It’s cheap, plus it tastes good.", translation: "Ucuz, hem de tadı güzel." },
+                    { id: 35, english: "still", turkish: "yine de", usage: "Bir önceki duruma rağmen gerçekleşecek bir eylemi belirtir.", example: "It’s raining. Still, I’ll go out.", translation: "Yağmur yağıyordu. Yine de dışarı çıkacağım." },
+                    { id: 36, english: "though (cümle sonunda)", turkish: "ama, yine de", usage: "Cümlenin sonuna eklenerek hafif bir zıtlık veya çekince belirtir.", example: "It’s nice. Expensive, though.", translation: "Güzel. Ama pahalı." },
+                    { id: 37, english: "anyway", turkish: "neyse, her şeye rağmen", usage: "Konu değiştirmek veya önceki bir durumu geçersiz kılmak için kullanılır.", example: "It was bad. Anyway, forget it.", translation: "Kötüydü. Neyse, boşver gitsin." },
+                    { id: 38, english: "otherwise", turkish: "yoksa, aksi takdirde", usage: "Belirtilen koşulun gerçekleşmemesi durumunda ortaya çıkacak olumsuz sonucu ifade eder.", example: "Hurry up, otherwise we’ll be late.", translation: "Acele et, yoksa geç kalacağız." },
+                    { id: 39, english: "or else", turkish: "yoksa, aksi halde", usage: "Daha sert bir uyarı veya tehdit içerir.", example: "Work hard, or else you’ll fail.", translation: "Çok çalış, yoksa kalırsın." },
+                    { id: 40, english: "just in case", turkish: "ne olur ne olmaz diye", usage: "Bir duruma karşı önlem almak için kullanılır.", example: "Take an umbrella, just in case.", translation: "Şemsiye al, ne olur ne olmaz." },
+                    { id: 41, english: "by the time", turkish: "-dığında, -e kadar", usage: "Bir eylem gerçekleştiğinde diğerinin çoktan bitmiş olduğunu vurgular.", example: "By the time I arrived, he had left.", translation: "Ben vardığımda o gitmişti bile." },
+                    { id: 42, english: "right after", turkish: "hemen sonra", usage: "Bir eylemin diğerinin hemen ardından gerçekleşeceğini belirtir.", example: "Call me right after dinner.", translation: "Yemekten hemen sonra ara." },
+                    { id: 43, english: "at the same time", turkish: "aynı anda", usage: "İki veya daha fazla eylemin aynı anda gerçekleştiğini belirtir.", example: "We talked at the same time.", translation: "Aynı anda konuştuk." },
+                    { id: 44, english: "you know", turkish: "bilirsin ya, hani", usage: "Düşünmek için zaman kazanmak veya bir fikri netleştirmek için kullanılır.", example: "It was, you know, strange.", translation: "Hani, biraz garipti." },
+                    { id: 45, english: "I mean", turkish: "yani, demek istiyorum ki", usage: "Bir önceki ifadeyi açıklamak veya düzeltmek için kullanılır.", example: "He’s nice, I mean, most of the time.", translation: "İyi biri, yani, çoğu zaman öyle." },
+                    { id: 46, english: "like", turkish: "şey, sanki", usage: "Cümle içinde bir duraksama yaratmak veya benzetme kurmak için kullanılır.", example: "It was, like, amazing.", translation: "Şey, inanılmazdı." },
+                ]
+            }
+        ];
+
+        const DOM = {
+            deckSelectionView: document.getElementById('deck-selection-view'),
+            learningView: document.getElementById('learning-view'),
+            deckEditorView: document.getElementById('deck-editor-view'),
+            deckList: document.getElementById('deck-list'),
+            addNewDeckBtn: document.getElementById('add-new-deck-btn'),
+            learningDeckTitle: document.getElementById('learning-deck-title'),
+            backToDecksBtn: document.getElementById('back-to-decks-btn'),
+            card: document.getElementById('card'),
+            cardFront: document.getElementById('card-front'),
+            cardBack: document.getElementById('card-back'),
+            restartBtn: document.getElementById('restart-btn'),
+            completionScreen: document.getElementById('completion-screen'),
+            masteredCount: document.getElementById('mastered-count'),
+            totalCount: document.getElementById('total-count'),
+            progressBar: document.getElementById('progress-bar'),
+            editorTitle: document.getElementById('editor-title'),
+            deckNameInput: document.getElementById('deck-name-input'),
+            cardEditorList: document.getElementById('card-editor-list'),
+            addNewCardBtn: document.getElementById('add-new-card-btn'),
+            cancelDeckEditBtn: document.getElementById('cancel-deck-edit-btn'),
+            saveDeckBtn: document.getElementById('save-deck-btn'),
+            importDeckBtn: document.getElementById('import-deck-btn'),
+            importFileInput: document.getElementById('import-file-input'),
+            deckTestModeToggle: document.getElementById('deck-test-mode-toggle'),
+            resetProgressBtn: document.getElementById('reset-progress-btn'),
+        };
+
+        let appState = {
+            decks: [],
+            progressData: {}, // YENİ: İlerleme verilerini tutacak nesne
+            currentDeck: null,
+            currentTestMode: true,
+            learningData: [],
+            currentCard: null,
+            recognition: null,
+            editingDeckId: null,
+        };
+        const MASTERY_LEVEL = 3;
+
+        // --- DATA MANAGEMENT ---
+        function loadDecks() {
+            const decksJSON = localStorage.getItem('flashcardDecks');
+            if (decksJSON) {
+                appState.decks = JSON.parse(decksJSON);
+                appState.decks.forEach(deck => {
+                    if (deck.testMode === undefined) deck.testMode = true;
+                });
+            } else {
+                appState.decks = initialDecks;
+                saveDecks();
+            }
+        }
+
+        function saveDecks() {
+            localStorage.setItem('flashcardDecks', JSON.stringify(appState.decks));
+        }
+
+        // YENİ: İlerleme verilerini yüklemek ve kaydetmek için fonksiyonlar
+        function loadProgress() {
+            const progressJSON = localStorage.getItem('flashcardProgress');
+            if (progressJSON) {
+                appState.progressData = JSON.parse(progressJSON);
+            }
+        }
+
+        function saveProgress() {
+            localStorage.setItem('flashcardProgress', JSON.stringify(appState.progressData));
+        }
+        
+        // YENİ: Tek bir kartın ilerlemesini güncelleyip kaydeden fonksiyon
+        function updateCardProgress(deckId, cardId, newMastery) {
+            if (!appState.progressData[deckId]) {
+                appState.progressData[deckId] = {};
+            }
+            appState.progressData[deckId][cardId] = newMastery;
+            saveProgress();
+        }
+
+        // YENİ: Bir setin tüm ilerlemesini sıfırlayan fonksiyon
+        function resetDeckProgress(deckId) {
+            if (appState.progressData[deckId]) {
+                delete appState.progressData[deckId];
+                saveProgress();
+            }
+        }
+		
+		function speakText(textToSpeak) {
+            if (!'speechSynthesis' in window) {
+                showToast('Tarayıcınız sesli okuma özelliğini desteklemiyor.', 'warning');
+                return;
+            }
+            window.speechSynthesis.cancel(); // Önceki konuşmayı iptal et
+            const utterance = new SpeechSynthesisUtterance(textToSpeak);
+            utterance.lang = 'en-US'; // İngilizce aksanıyla okunmasını sağla
+            utterance.rate = 0.9; // Okuma hızını ayarla
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // --- VIEW MANAGEMENT ---
+        function showView(viewName) {
+            ['deck-selection-view', 'learning-view', 'deck-editor-view'].forEach(viewId => {
+                document.getElementById(viewId)?.classList.add('hidden');
+            });
+            document.getElementById(viewName)?.classList.remove('hidden');
+        }
+
+        // --- DECK SELECTION VIEW ---
+		function renderDeckSelectionView() {
+            DOM.deckList.innerHTML = '';
+            if (appState.decks.length === 0) {
+                 DOM.deckList.innerHTML = `<p class="text-center text-slate-500">Henüz bir çalışma setiniz yok. Başlamak için bir tane oluşturun!</p>`;
+            }
+            appState.decks.forEach(deck => {
+                const deckProgress = appState.progressData[deck.id] || {};
+                const masteredCount = Object.values(deckProgress).filter(m => m >= MASTERY_LEVEL).length;
+
+                const deckElement = document.createElement('div');
+                deckElement.className = 'bg-white p-4 rounded-lg shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4';
+                deckElement.innerHTML = `
+                        <div class="flex-grow text-center sm:text-left">
+                            <h3 class="font-bold text-xl text-slate-800">${deck.name}</h3>
+                            <p class="text-sm text-slate-500">${deck.cards.length} kart · ${masteredCount} öğrenildi</p>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-2">
+                                <button data-action="edit" data-id="${deck.id}" class="action-button p-2 rounded-full bg-slate-100 text-slate-500 hover:bg-indigo-100 hover:text-indigo-600 transition-colors" title="Düzenle">
+                                    <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="m5.433 13.917 1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z" /></svg>
+                                </button>
+									<button data-action="delete" data-id="${deck.id}" class="action-button p-2 rounded-full bg-slate-100 text-slate-500 hover:bg-red-100 hover:text-red-600 transition-colors" title="Sil">
+										<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+											<path d="M3 6H21M5 6V20C5 21.1046 5.89543 22 7 22H17C18.1046 22 19 21.1046 19 20V6M8 6V4C8 2.89543 8.89543 2 10 2H14C15.1046 2 16 2.89543 16 4V6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+											<path d="M14 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+											<path d="M10 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+										</svg>
+									</button>
+                            </div>
+                            <button data-action="start" data-id="${deck.id}" class="action-button bg-green-600 text-white font-bold py-2 px-6 rounded-full shadow-md hover:bg-green-700">Çalış</button>
+                        </div>
+                        `;
+                DOM.deckList.appendChild(deckElement);
+            });
+            showView('deck-selection-view');
+        }
+
+        DOM.deckList.addEventListener('click', (e) => {
+            const button = e.target.closest('button');
+            if (!button) return;
+            
+            const action = button.dataset.action;
+            const deckId = parseInt(button.dataset.id);
+
+            if (action === 'start') startLearningSession(deckId);
+            else if (action === 'edit') openDeckEditor(deckId);
+            else if (action === 'export') exportDeck(deckId);
+            else if (action === 'delete') {
+                const deckName = appState.decks.find(d => d.id === deckId)?.name;
+                if (confirm(`'${deckName}' setini silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`)) {
+                    appState.decks = appState.decks.filter(d => d.id !== deckId);
+                    resetDeckProgress(deckId); // Set silinirken ilerlemesi de siliniyor.
+                    saveDecks();
+                    renderDeckSelectionView();
+                    showToast(`'${deckName}' seti silindi.`, 'info');
+                }
+            }
+        });
+
+        // --- LEARNING VIEW ---
+        function startLearningSession(deckId) {
+            appState.currentDeck = appState.decks.find(d => d.id === deckId);
+            if (!appState.currentDeck || appState.currentDeck.cards.length === 0) {
+                showToast("Bu sette çalışılacak kart bulunmuyor!", "warning");
+                return;
+            }
+            appState.currentTestMode = appState.currentDeck.testMode;
+            
+            const deckProgress = appState.progressData[deckId] || {};
+            appState.learningData = appState.currentDeck.cards.map(card => ({
+                ...card,
+                mastery: deckProgress[card.id] || 0
+            }));
+
+            DOM.learningDeckTitle.textContent = appState.currentDeck.name;
+            DOM.completionScreen.classList.add('hidden');
+            if(DOM.card.parentElement) {
+                DOM.card.parentElement.classList.remove('hidden');
+            }
+            updateProgress();
+            displayNextCard();
+            showView('learning-view');
+        }
+        
+        // --- DECK EDITOR VIEW ---
+		function openDeckEditor(deckId = null) {
+            appState.editingDeckId = deckId;
+            DOM.cardEditorList.innerHTML = '';
+            let deckTestMode = true;
+
+            // Dışa aktar butonunu her açılışta yönet
+            const exportBtn = document.getElementById('export-deck-btn-editor');
+            
+            if (deckId) {
+                DOM.editorTitle.textContent = 'Seti Düzenle';
+                const deck = appState.decks.find(d => d.id === deckId);
+                DOM.deckNameInput.value = deck.name;
+                deckTestMode = deck.testMode;
+                deck.cards.forEach(card => renderCardEditor(card));
+                DOM.resetProgressBtn.classList.remove('hidden');
+
+                // YENİ: Butonu göster ve click olayını ata
+                exportBtn.classList.remove('hidden');
+                // Olası eski event listener'ları temizlemenin en kolay yolu klonlamaktır.
+                exportBtn.replaceWith(exportBtn.cloneNode(true));
+                document.getElementById('export-deck-btn-editor').addEventListener('click', () => {
+                    exportDeck(deckId);
+                });
+
+            } else {
+                DOM.editorTitle.textContent = 'Yeni Set Oluştur';
+                DOM.deckNameInput.value = '';
+                renderCardEditor();
+                DOM.resetProgressBtn.classList.add('hidden');
+                exportBtn.classList.add('hidden'); // YENİ: Yeni set oluştururken butonu gizle
+            }
+            updateTestModeToggle(deckTestMode);
+            showView('deck-editor-view');
+        }
+
+        function updateTestModeToggle(isTestMode) {
+            const toggle = DOM.deckTestModeToggle;
+            const span = toggle.querySelector('span');
+            if (isTestMode) {
+                toggle.classList.add('bg-indigo-600');
+                toggle.classList.remove('bg-gray-300');
+                span.classList.add('translate-x-5');
+                span.classList.remove('translate-x-0');
+            } else {
+                toggle.classList.remove('bg-indigo-600');
+                toggle.classList.add('bg-gray-300');
+                span.classList.remove('translate-x-5');
+                span.classList.add('translate-x-0');
+            }
+        }
+        
+        function renderCardEditor(card = {}) {
+            const cardId = card.id || Date.now() + Math.random();
+            const cardElement = document.createElement('div');
+            cardElement.className = 'p-4 border rounded-lg bg-slate-50';
+            cardElement.dataset.cardId = cardId;
+            cardElement.innerHTML = `
+                <div class="flex justify-end">
+                    <button data-action="delete-card" class="text-red-500 hover:text-red-700">&times;</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input type="text" data-field="english" value="${card.english || ''}" placeholder="İngilizce" class="p-2 border rounded">
+                    <input type="text" data-field="turkish" value="${card.turkish || ''}" placeholder="Türkçe" class="p-2 border rounded">
+                    <textarea data-field="usage" placeholder="Kullanım Amacı" class="p-2 border rounded md:col-span-2">${card.usage || ''}</textarea>
+                    <input type="text" data-field="example" value="${card.example || ''}" placeholder="Örnek Cümle" class="p-2 border rounded">
+                    <input type="text" data-field="translation" value="${card.translation || ''}" placeholder="Örnek Çeviri" class="p-2 border rounded">
+                </div>
+            `;
+            DOM.cardEditorList.appendChild(cardElement);
+        }
+
+        DOM.cardEditorList.addEventListener('click', e => {
+            if (e.target.closest('[data-action="delete-card"]')) {
+                e.target.closest('[data-card-id]').remove();
+            }
+        });
+
+        DOM.addNewCardBtn.addEventListener('click', () => renderCardEditor());
+
+        DOM.deckTestModeToggle.addEventListener('click', () => {
+            const isTestMode = DOM.deckTestModeToggle.classList.contains('bg-indigo-600');
+            updateTestModeToggle(!isTestMode);
+        });
+
+        DOM.saveDeckBtn.addEventListener('click', () => {
+            const name = DOM.deckNameInput.value.trim();
+            if (!name) {
+                alert("Set adı boş olamaz!");
+                return;
+            }
+            
+            const cards = [];
+            document.querySelectorAll('#card-editor-list [data-card-id]').forEach(cardEl => {
+                const english = cardEl.querySelector('[data-field="english"]').value.trim();
+                const turkish = cardEl.querySelector('[data-field="turkish"]').value.trim();
+                if (english && turkish) {
+                    cards.push({
+                        id: cardEl.dataset.cardId.includes('.') ? Date.now() + Math.random() : parseInt(cardEl.dataset.cardId),
+                        english: english,
+                        turkish: turkish,
+                        usage: cardEl.querySelector('[data-field="usage"]').value.trim(),
+                        example: cardEl.querySelector('[data-field="example"]').value.trim(),
+                        translation: cardEl.querySelector('[data-field="translation"]').value.trim(),
+                    });
+                }
+            });
+
+            const isTestMode = DOM.deckTestModeToggle.classList.contains('bg-indigo-600');
+
+            if (appState.editingDeckId) {
+                const deckIndex = appState.decks.findIndex(d => d.id === appState.editingDeckId);
+                appState.decks[deckIndex].name = name;
+                appState.decks[deckIndex].cards = cards;
+                appState.decks[deckIndex].testMode = isTestMode;
+            } else {
+                appState.decks.push({
+                    id: Date.now(),
+                    name: name,
+                    cards: cards,
+                    testMode: isTestMode
+                });
+            }
+            saveDecks();
+            renderDeckSelectionView();
+        });
+
+        // --- EVENT LISTENERS ---
+        DOM.addNewDeckBtn.addEventListener('click', () => openDeckEditor());
+        DOM.cancelDeckEditBtn.addEventListener('click', () => renderDeckSelectionView());
+        DOM.backToDecksBtn.addEventListener('click', () => renderDeckSelectionView());
+        
+        DOM.restartBtn.addEventListener('click', () => {
+            resetDeckProgress(appState.currentDeck.id);
+            startLearningSession(appState.currentDeck.id)
+        });
+
+        DOM.importDeckBtn.addEventListener('click', () => DOM.importFileInput.click());
+        DOM.importFileInput.addEventListener('change', importDeck);
+        
+        DOM.resetProgressBtn.addEventListener('click', () => {
+             if (appState.editingDeckId && confirm("Bu setteki öğrenme ilerlemenizi kalıcı olarak sıfırlamak istediğinizden emin misiniz?")) {
+                 resetDeckProgress(appState.editingDeckId);
+                 showToast("İlerleme kalıcı olarak sıfırlandı.", "info");
+                 renderDeckSelectionView(); // Ana menüyü yenileyerek "0 öğrenildi" göstermesi için
+                 showView('deck-editor-view'); // Editor'de kalmaya devam et
+             }
+        });
+
+        // --- LEARNING LOGIC ---
+        async function validateSentence(word, userSentence) {
+            const checkBtn = document.getElementById('check-sentence-btn');
+            const skipBtn = document.getElementById('skip-card-btn');
+            
+            checkBtn.disabled = true;
+            skipBtn.disabled = true;
+            showToast('Değerlendiriliyor...', 'info');
+
+            const apiKey = "AIzaSyBZNDPH4T_mYhkym6sXe0nCwe5RXXQZl_Q"; 
+            if (apiKey === "YAPAY_ZEKA_API_ANAHTARINIZI_BURAYA_GIRIN") {
+                showToast("Yapay zeka özelliğini kullanmak için kod içerisine API anahtarınızı eklemelisiniz.", "warning");
+                checkBtn.disabled = false;
+                skipBtn.disabled = false;
+                return;
+            }
+
+            const prompt = `Analyze the user's English sentence: '${userSentence}'. It must correctly use the phrase '${word}'. Is the sentence valid? **Crucial rule: Completely ignore simple typos like capitalization (e.g., 'i' vs 'I') and missing apostrophes (e.g., 'dont' vs 'don't').** Focus ONLY on the core grammar and the correct usage of the phrase '${word}'. If the core grammar and usage are correct despite typos, return isValid: true. Provide a very short explanation in Turkish. If the core usage is wrong, return isValid: false and explain the main error in Turkish.`;
+            
+            const payload = {
+                 contents: [{ role: "user", parts: [{ text: prompt }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            "isValid": { "type": "BOOLEAN" },
+                            "explanation": { "type": "STRING" }
+                        },
+                        required: ["isValid", "explanation"]
+                    }
+                }
+            };
+            
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
+                
+                const result = await response.json();
+                const text = result.candidates[0].content.parts[0].text;
+                const parsedJson = JSON.parse(text);
+
+                if (parsedJson.isValid) {
+                    showToast(parsedJson.explanation, 'success');
+                    const cardInDeck = appState.learningData.find(c => c.id === appState.currentCard.id);
+                    if (cardInDeck.mastery < MASTERY_LEVEL) cardInDeck.mastery++;
+                    updateCardProgress(appState.currentDeck.id, cardInDeck.id, cardInDeck.mastery);
+                    updateProgress();
+                    setTimeout(displayNextCard, 2500);
+                } else {
+                    showToast(`${parsedJson.explanation} Lütfen tekrar dene.`, 'error');
+                    checkBtn.disabled = false;
+                    skipBtn.disabled = false;
+                }
+            } catch (error) {
+                console.error("Gemini API Error:", error);
+                showToast('Doğrulama yapılamadı. Tekrar deneyin.', 'error');
+                checkBtn.disabled = false;
+                skipBtn.disabled = false;
+            }
+        }
+
+		function toggleExampleVisibility() {
+            const exampleToggleArea = document.getElementById('example-toggle-area');
+            const showExampleBtn = document.getElementById('show-example-btn');
+            if(!showExampleBtn) return;
+            const isExampleVisible = !showExampleBtn.textContent.includes("Göster");
+
+            if (!isExampleVisible) {
+                exampleToggleArea.innerHTML = `
+                    <button id="show-example-btn" class="action-button w-full text-center bg-slate-200 text-slate-700 font-semibold py-2 px-4 rounded-lg hover:bg-slate-300 transition-colors text-sm">Örnek Cümleyi Gizle (↑)</button>
+                    <div class="mt-2 p-3 bg-slate-100 rounded-lg">
+                        <h4 class="font-bold text-slate-500 text-xs uppercase tracking-wider">Örnek Cümle</h4>
+                        <div class="flex items-center gap-2">
+                            <p class="text-slate-800 font-medium mt-1 text-sm">"${appState.currentCard.example}"</p>
+                            <button id="speak-example-btn" class="action-button p-1 rounded-full text-slate-400 hover:bg-slate-200 hover:text-indigo-600" title="Sesli Oku">
+								<svg version="1.0" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="15px" height="15px" viewBox="0 0 64 64" enable-background="new 0 0 64 64" xml:space="preserve">
+								<g>
+									<path fill="rgb(51 65 85)" d="M59.998,28.001h-7.999c-2.211,0-4,1.789-4,4s1.789,4,4,4h7.999c2.211,0,4-1.789,4-4
+										S62.209,28.001,59.998,28.001z"></path>
+									<path fill="rgb(51 65 85)" d="M49.71,19.466l6.929-4c1.914-1.105,2.57-3.551,1.461-5.465c-1.102-1.914-3.547-2.57-5.46-1.465l-6.93,4
+										c-1.914,1.105-2.57,3.551-1.461,5.464C45.351,19.915,47.796,20.571,49.71,19.466z"></path>
+									<path fill="rgb(51 65 85)" d="M56.639,48.535l-6.929-3.999c-1.914-1.105-4.355-0.449-5.461,1.464c-1.105,1.914-0.453,4.359,1.461,5.465
+										l6.93,4c1.913,1.105,4.358,0.449,5.464-1.465S58.553,49.641,56.639,48.535z"></path>
+									<path fill="rgb(51 65 85)" d="M37.53,0.307c-1.492-0.625-3.211-0.277-4.359,0.867L18.343,16.001H4c-2.211,0-4,1.789-4,4v24
+										C0,46.211,1.789,48,4,48h14.343l14.828,14.828C33.937,63.594,34.96,64,35.999,64c0.516,0,1.035-0.098,1.531-0.305
+										c1.496-0.617,2.469-2.078,2.469-3.695V4.001C39.999,2.384,39.026,0.924,37.53,0.307z"></path>
+								</g>
+								</svg>                            
+							</button>
+                        </div>
+                        <p class="text-indigo-500 italic text-sm mt-1">"${appState.currentCard.translation}"</p>
+                    </div>`;
+            } else {
+                 exampleToggleArea.innerHTML = `
+                    <button id="show-example-btn" class="action-button w-full text-center bg-slate-200 text-slate-700 font-semibold py-2 px-4 rounded-lg hover:bg-slate-300 transition-colors text-sm">Örnek Cümle Göster (↓)</button>`;
+            }
+
+            // Event listener'ları yeniden ata
+            document.getElementById('show-example-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleExampleVisibility();
+            });
+
+            const speakExampleBtn = document.getElementById('speak-example-btn');
+            if(speakExampleBtn) {
+                speakExampleBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    speakText(appState.currentCard.example);
+                });
+            }
+        }
+        
+        function startSpeechRecognition() {
+            if (appState.recognition) {
+                appState.recognition.stop();
+                return;
+            }
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                showToast("Tarayıcınız ses tanımayı desteklemiyor.", "error");
+                return;
+            }
+
+            appState.recognition = new SpeechRecognition();
+            appState.recognition.lang = 'en-US';
+            appState.recognition.interimResults = false;
+            appState.recognition.maxAlternatives = 1;
+
+            const micBtn = document.getElementById('mic-btn');
+            const sentenceInput = document.getElementById('sentence-input');
+            const originalMicIcon = micBtn.innerHTML;
+            
+            micBtn.innerHTML = `<svg class="w-5 h-5 animate-pulse" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Z" clip-rule="evenodd" /></svg>`;
+            micBtn.classList.add('bg-red-500', 'text-white');
+            micBtn.classList.remove('bg-slate-200', 'text-slate-700');
+
+            appState.recognition.start();
+
+            appState.recognition.onresult = (event) => {
+                const speechResult = event.results[0][0].transcript;
+                sentenceInput.value = speechResult;
+            };
+
+            appState.recognition.onend = () => {
+                micBtn.innerHTML = originalMicIcon;
+                micBtn.classList.remove('bg-red-500', 'text-white');
+                micBtn.classList.add('bg-slate-200', 'text-slate-700');
+                appState.recognition = null;
+            };
+
+            appState.recognition.onerror = (event) => {
+                if (event.error === 'no-speech') {
+                    showToast('Ses algılanamadı. Lütfen tekrar deneyin.', 'warning');
+                } else if (event.error !== 'aborted') {
+                    console.error("Speech recognition error:", event.error);
+                    showToast(`Ses tanıma hatası: ${event.error}`, 'error');
+                }
+            };
+        }
+
+		function displayNextCard() {
+            appState.currentCard = getNextCard();
+
+            if (!appState.currentCard) {
+                DOM.scene.parentElement.style.height = 'auto';
+                DOM.card.parentElement.style.height = 'auto';
+                DOM.card.parentElement.classList.add('hidden');
+                DOM.completionScreen.classList.remove('hidden');
+                return;
+            }
+
+            // DEĞİŞİKLİK: Yükseklik artık min-height kullanıyor.
+            if (appState.currentTestMode) {
+                // Test modunda kart, kapsayıcıyı tam doldursun.
+                DOM.card.style.minHeight = ''; // min-height'i temizle
+                DOM.card.style.height = '100%';
+            } else {
+                // Öğrenme modunda, yükseklik otomatik olsun ama %77'ten küçük olmasın.
+                DOM.card.style.height = 'auto';
+                DOM.card.style.minHeight = '77%';
+            }
+
+            if (DOM.card.classList.contains('is-flipped')) {
+                DOM.card.classList.remove('is-flipped');
+            }
+
+            DOM.cardFront.innerHTML = `<h2 class="text-4xl md:text-5xl font-bold text-center">${appState.currentCard.english}</h2>`;
+            
+            const cardInfoHTML = `
+                <div class="flex items-center gap-2">
+                    <h3 class="text-2xl font-bold text-indigo-600">${appState.currentCard.english}</h3>
+                    <button id="speak-word-btn" class="action-button p-1 rounded-full text-slate-400 hover:bg-slate-200 hover:text-indigo-600" title="Sesli Oku">
+						<svg version="1.0" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="15px" height="15px" viewBox="0 0 64 64" enable-background="new 0 0 64 64" xml:space="preserve">
+								<g>
+									<path fill="rgb(51 65 85)" d="M59.998,28.001h-7.999c-2.211,0-4,1.789-4,4s1.789,4,4,4h7.999c2.211,0,4-1.789,4-4
+										S62.209,28.001,59.998,28.001z"></path>
+									<path fill="rgb(51 65 85)" d="M49.71,19.466l6.929-4c1.914-1.105,2.57-3.551,1.461-5.465c-1.102-1.914-3.547-2.57-5.46-1.465l-6.93,4
+										c-1.914,1.105-2.57,3.551-1.461,5.464C45.351,19.915,47.796,20.571,49.71,19.466z"></path>
+									<path fill="rgb(51 65 85)" d="M56.639,48.535l-6.929-3.999c-1.914-1.105-4.355-0.449-5.461,1.464c-1.105,1.914-0.453,4.359,1.461,5.465
+										l6.93,4c1.913,1.105,4.358,0.449,5.464-1.465S58.553,49.641,56.639,48.535z"></path>
+									<path fill="rgb(51 65 85)" d="M37.53,0.307c-1.492-0.625-3.211-0.277-4.359,0.867L18.343,16.001H4c-2.211,0-4,1.789-4,4v24
+										C0,46.211,1.789,48,4,48h14.343l14.828,14.828C33.937,63.594,34.96,64,35.999,64c0.516,0,1.035-0.098,1.531-0.305
+										c1.496-0.617,2.469-2.078,2.469-3.695V4.001C39.999,2.384,39.026,0.924,37.53,0.307z"></path>
+								</g>
+								</svg>
+					</button>
+                </div>
+                <p class="text-lg font-semibold text-slate-700 mb-3">${appState.currentCard.turkish}</p>
+                
+                ${appState.currentCard.usage ? `
+                <div class="mt-2">
+                    <h4 class="font-bold text-slate-500 text-xs uppercase tracking-wider">Kullanım Amacı</h4>
+                    <p class="text-slate-600 text-sm">${appState.currentCard.usage}</p>
+                </div>
+                ` : ''}
+
+                ${appState.currentCard.example ? `
+                <div id="example-toggle-area" class="my-3">
+                    <button id="show-example-btn" class="action-button w-full text-center bg-slate-200 text-slate-700 font-semibold py-2 px-4 rounded-lg hover:bg-slate-300 transition-colors text-sm">Örnek Cümle Göster (↓)</button>
+                </div>
+                ` : ''}
+            `;
+
+            let cardBackHTML = '';
+
+            if (appState.currentTestMode) {
+                // DEĞİŞİKLİK: Yazı kutusunun (textarea) yapısı ve yeni seslendirme butonu eklendi.
+                const testModeActionsHTML = `
+                <div class="mt-auto pt-3 border-t border-slate-200 flex flex-col flex-grow">
+                    <label for="sentence-input" class="font-bold text-slate-500 text-xs uppercase tracking-wider mb-2">Bilgini Test Et</label>
+                    <div class="relative w-full">
+                        <textarea id="sentence-input" rows="3" class="w-full p-2 pr-20 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition" placeholder="'${appState.currentCard.english}' kelimesini içeren bir cümle yaz..."></textarea>
+                        <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                             <button id="speak-input-btn" class="action-button p-2 rounded-full text-slate-500 hover:bg-slate-200 hidden" title="Yazdığını Seslendir">
+                                <svg class="w-4 h-4" version="1.0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" xml:space="preserve"><g><path fill="currentColor" d="M59.998,28.001h-7.999c-2.211,0-4,1.789-4,4s1.789,4,4,4h7.999c2.211,0,4-1.789,4-4S62.209,28.001,59.998,28.001z"></path><path fill="currentColor" d="M49.71,19.466l6.929-4c1.914-1.105,2.57-3.551,1.461-5.465c-1.102-1.914-3.547-2.57-5.46-1.465l-6.93,4c-1.914,1.105-2.57,3.551-1.461,5.464C45.351,19.915,47.796,20.571,49.71,19.466z"></path><path fill="currentColor" d="M56.639,48.535l-6.929-3.999c-1.914-1.105-4.355-0.449-5.461,1.464c-1.105,1.914-0.453,4.359,1.461,5.465l6.93,4c1.913,1.105,4.358,0.449,5.464-1.465S58.553,49.641,56.639,48.535z"></path><path fill="currentColor" d="M37.53,0.307c-1.492-0.625-3.211-0.277-4.359,0.867L18.343,16.001H4c-2.211,0-4,1.789-4,4v24C0,46.211,1.789,48,4,48h14.343l14.828,14.828C33.937,63.594,34.96,64,35.999,64c0.516,0,1.035-0.098,1.531-0.305c1.496-0.617,2.469-2.078,2.469-3.695V4.001C39.999,2.384,39.026,0.924,37.53,0.307z"></path></g></svg>
+                             </button>
+                             <button id="mic-btn" class="action-button p-2 rounded-full text-slate-500 hover:bg-slate-200" title="Sesli Söyle">
+                                <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M8.25 4.5a3.75 3.75 0 1 1 7.5 0v8.25a3.75 3.75 0 1 1-7.5 0V4.5Z" /><path d="M6 10.5a.75.75 0 0 1 .75.75v1.5a5.25 5.25 0 1 0 10.5 0v-1.5a.75.75 0 0 1 1.5 0v1.5a6.75 6.75 0 1 1-13.5 0v-1.5A.75.75 0 0 1 6 10.5Z" /></svg>
+                             </button>
+                        </div>
+                    </div>
+                    <div class="mt-auto flex space-x-2 pt-4">
+                        <button id="skip-card-btn" class="action-button w-1/3 text-center bg-slate-200 text-slate-700 font-semibold py-2 px-4 rounded-lg hover:bg-slate-300 transition-colors text-sm">Bilmiyorum</button>
+                        <button id="check-sentence-btn" class="action-button w-2/3 text-center bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors text-sm">Kontrol Et</button>
+                    </div>
+                </div>`;
+                cardBackHTML = `<div class="w-full h-full flex flex-col"><div class="flex-grow">${cardInfoHTML}</div>${testModeActionsHTML}</div>`;
+            } else {
+                const learnModeActionsHTML = `
+                <div class="mt-4 pt-4 border-t border-slate-200 flex space-x-2">
+                    <button id="skip-card-btn" class="action-button w-1/2 text-center bg-slate-200 text-slate-700 font-semibold py-3 px-4 rounded-lg">Bilmiyorum</button>
+                    <button id="learned-btn" class="action-button w-1/2 text-center bg-green-500 text-white font-semibold py-3 px-4 rounded-lg">Öğrendim</button>
+                </div>`;
+                cardBackHTML = `<div class="w-full">${cardInfoHTML}${learnModeActionsHTML}</div>`;
+            }
+
+            DOM.cardBack.innerHTML = cardBackHTML;
+            
+            // --- Event Listeners ---
+            const speakWordBtn = document.getElementById('speak-word-btn');
+            if(speakWordBtn) {
+                speakWordBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    speakText(appState.currentCard.english);
+                });
+            }
+            
+            const showExampleBtn = document.getElementById('show-example-btn');
+            if (showExampleBtn) {
+                showExampleBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleExampleVisibility(); });
+            }
+            
+            document.getElementById('skip-card-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const cardInDeck = appState.learningData.find(c => c.id === appState.currentCard.id);
+                cardInDeck.mastery = Math.max(0, cardInDeck.mastery - 1);
+                updateCardProgress(appState.currentDeck.id, cardInDeck.id, cardInDeck.mastery);
+                updateProgress();
+                displayNextCard();
+            });
+
+            if (appState.currentTestMode) {
+                const sentenceInput = document.getElementById('sentence-input');
+                const speakInputBtn = document.getElementById('speak-input-btn');
+
+                // DEĞİŞİKLİK: Yazı kutusuna yazıldıkça butonu göster/gizle
+                sentenceInput.addEventListener('input', () => {
+                    if (sentenceInput.value.trim() !== '') {
+                        speakInputBtn.classList.remove('hidden');
+                    } else {
+                        speakInputBtn.classList.add('hidden');
+                    }
+                });
+
+                // DEĞİŞİKLİK: Yeni butona seslendirme işlevi ekle
+                speakInputBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    speakText(sentenceInput.value);
+                });
+
+                document.getElementById('check-sentence-btn').addEventListener('click', (e) => { e.stopPropagation(); if(sentenceInput.value.trim() !== "") { validateSentence(appState.currentCard.english, sentenceInput.value); } });
+                document.getElementById('sentence-input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('check-sentence-btn').click(); } });
+                document.getElementById('mic-btn').addEventListener('click', (e) => { e.stopPropagation(); startSpeechRecognition(); });
+            } else {
+                document.getElementById('learned-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const cardInDeck = appState.learningData.find(c => c.id === appState.currentCard.id);
+                    if (cardInDeck.mastery < MASTERY_LEVEL) cardInDeck.mastery++;
+                    updateCardProgress(appState.currentDeck.id, cardInDeck.id, cardInDeck.mastery);
+                    updateProgress();
+                    displayNextCard();
+                });
+            }
+        }
+
+        function getNextCard() {
+            let deck = appState.learningData.filter(card => card.mastery < MASTERY_LEVEL);
+            if (deck.length === 0) return null;
+            const weightedDeck = deck.flatMap(card => { const weight = Math.max(1, (MASTERY_LEVEL - card.mastery) * 2); return Array(weight).fill(card); });
+            return weightedDeck[Math.floor(Math.random() * weightedDeck.length)];
+        }
+
+        function updateProgress() {
+            const mastered = appState.learningData.filter(card => card.mastery >= MASTERY_LEVEL).length;
+            const total = appState.learningData.length;
+            DOM.masteredCount.textContent = mastered;
+            DOM.totalCount.textContent = total;
+            DOM.progressBar.style.width = total > 0 ? `${(mastered / total) * 100}%` : '0%';
+        }
+        
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast p-4 rounded-lg shadow-lg flex items-center space-x-3 text-white font-semibold';
+
+            let bgColor, icon;
+            switch (type) {
+                case 'success':
+                    bgColor = 'bg-green-500';
+                    icon = `<svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd" /></svg>`;
+                    break;
+                case 'error':
+                    bgColor = 'bg-red-500';
+                    icon = `<svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd" /></svg>`;
+                    break;
+                case 'warning':
+                    bgColor = 'bg-amber-500';
+                    icon = `<svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 9 5Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" /></svg>`;
+                    break;
+                default:
+                    bgColor = 'bg-slate-700';
+                    icon = `<svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM9 5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 9 5Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" /></svg>`;
+            }
+
+            toast.classList.add(bgColor);
+            toast.innerHTML = `<span>${icon}</span><p>${message}</p>`;
+            container.appendChild(toast);
+
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, 4000);
+        }
+
+        function exportDeck(deckId) {
+            const deck = appState.decks.find(d => d.id === deckId);
+            if (!deck) return;
+
+            const dataStr = JSON.stringify(deck, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'text/plain'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.download = `${deck.name.replace(/ /g, '_')}.txt`;
+            link.href = url;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importDeck(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const deck = JSON.parse(e.target.result);
+                    if (deck && deck.name && Array.isArray(deck.cards)) {
+                        deck.id = Date.now();
+                        appState.decks.push(deck);
+                        saveDecks();
+                        renderDeckSelectionView();
+                        showToast(`'${deck.name}' seti başarıyla içe aktarıldı!`, 'success');
+                    } else {
+                        throw new Error('Invalid deck format');
+                    }
+                } catch (err) {
+                    showToast('Geçersiz dosya formatı veya bozuk dosya.', 'error');
+                    console.error("Import error:", err);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // --- KEYBOARD & GLOBAL LISTENERS ---
+        document.addEventListener('keydown', (event) => {
+            if (document.activeElement.tagName.toLowerCase() === 'textarea' || document.activeElement.tagName.toLowerCase() === 'input' || !DOM.deckEditorView.classList.contains('hidden')) return;
+            if (DOM.learningView.classList.contains('hidden')) return;
+
+            const isFlipped = DOM.card.classList.contains('is-flipped');
+            if (event.code === 'Space' && !isFlipped) { event.preventDefault(); DOM.card.classList.toggle('is-flipped'); return; }
+            
+            if (isFlipped) {
+                if(appState.currentTestMode) {
+                     if (event.code === 'Escape') { event.preventDefault(); document.getElementById('skip-card-btn').click(); return; }
+                } else {
+                     if (event.code === 'ArrowLeft') { event.preventDefault(); document.getElementById('skip-card-btn').click(); return; }
+                     if (event.code === 'ArrowRight' || event.code === 'Enter') { event.preventDefault(); document.getElementById('learned-btn').click(); return; }
+                }
+
+                const showExampleBtn = document.getElementById('show-example-btn');
+                if (!showExampleBtn) return;
+                if (event.code === 'ArrowDown' || event.code === 'ArrowUp') { event.preventDefault(); toggleExampleVisibility(); }
+            }
+        });
+
+        DOM.card.addEventListener('click', (e) => { 
+            if (e.target === DOM.card || e.target === DOM.cardFront) { 
+                DOM.card.classList.toggle('is-flipped'); 
+            } 
+        });
+        
+        // --- INITIALIZE APP ---
+        loadDecks();
+        loadProgress(); 
+        renderDeckSelectionView();
+
+    </script>
+</body>
+</html>
